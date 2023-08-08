@@ -276,6 +276,10 @@ void initESP_NOW(){
 void setup() {
   // Initialize Serial Monitor
   Serial.begin(115200);
+  while (!Serial && millis() < 5000);
+
+  Serial.println();
+  Serial.println("Core IoT Hub - Serial Ready!!");
 
   Serial.println();
   Serial.print("Server MAC Address:  ");
