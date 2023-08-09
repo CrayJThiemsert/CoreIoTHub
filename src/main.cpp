@@ -82,6 +82,7 @@ const char index_html[] PROGMEM = R"rawliteral(
   <div class="topnav">
     <h3>ESP-NOW DASHBOARD</h3>
   </div>
+  <!--
   <div class="content">
     <div class="cards">
       <div class="card temperature">
@@ -99,11 +100,14 @@ const char index_html[] PROGMEM = R"rawliteral(
       </div>
     </div>
   </div>
+  -->
+  <!--
   <div id="container_debug" class="content">
     Hello debug
   </div>
+  -->
   <div id="container_board" class="content">
-    Hello div
+    Hello IoT!! - Please restart client. 
   </div>
 <script>
 if (!!window.EventSource) {
@@ -124,11 +128,11 @@ if (!!window.EventSource) {
  
  source.addEventListener('new_readings', function(e) {
   console.log("new_readings", e.data);
-  const container = document.getElementById('container_debug');
+  // const container = document.getElementById('container_debug');
 
   var obj = JSON.parse(e.data);
 
-  container.innerHTML = JSON.stringify(obj, null, 2);
+  // container.innerHTML = JSON.stringify(obj, null, 2);
 
   document.getElementById("t"+obj.id).innerHTML = obj.temperature.toFixed(2);
   document.getElementById("h"+obj.id).innerHTML = obj.humidity.toFixed(2);
@@ -143,27 +147,51 @@ if (!!window.EventSource) {
 
   var obj = JSON.parse(e.data);
 
-  container.innerHTML = JSON.stringify(obj, null, 2);
+  // container.innerHTML = JSON.stringify(obj, null, 2);
 
   obj.forEach((item, index) => {
-      const divId = `div${index + 1}`;
-      const div = document.createElement('div');
-      div.id = divId;
-      div.className = 'data-div'; // Add any desired CSS class
+    if(item.macAddr != null && item.macAddr != '000000000000') {
+      const tId = `${'t'+item.macAddr}`;
+      const rtId = `${'rt'+item.macAddr}`;
+      const hId = `${'h'+item.macAddr}`;
+      const rhId = `${'rh'+item.macAddr}`;
 
-      div.innerHTML = `
-          <h2>${item.readingId}</h2>
-          <p>${item.temperature}</p>
-          <!-- Add more content as needed -->
+      const div_cards = document.createElement('div');
+      //divt_cards.id = tId;
+      div_cards.className = 'cards'; // Add any desired CSS class
+
+      div_cards.innerHTML = `
+          <!--<h2>${tId}</h2>-->
+          
+          <div class="card temperature">
+            <h4><i class="fas fa-thermometer-half"></i> BOARD #${item.macAddr} - TEMPERATURE</h4><p><span class="reading"><span id="${tId}"></span> &deg;C</span></p><p class="packet">Reading ID: <span id="${rtId}"></span></p>
+          </div>
+          <div class="card humidity">
+            <h4><i class="fas fa-tint"></i> BOARD #${item.macAddr} - HUMIDITY</h4><p><span class="reading"><span id="${hId}"></span> &percnt;</span></p><p class="packet">Reading ID: <span id="${rhId}"></span></p>
+          </div>
+
       `;
 
-      container.appendChild(div);
+      container.appendChild(div_cards);
+    }
+      
   });
  }, false);
 }
 </script>
 </body>
 </html>)rawliteral";
+
+void removeChar(char* str, char charToRemove);
+void toLowerCase(char* str);
+
+void toLowerCase(char* str) {
+    size_t length = strlen(str);
+
+    for (size_t i = 0; i < length; ++i) {
+        str[i] = tolower(str[i]);
+    }
+}
 
 bool verifyBoardsList(const uint8_t * mac_addr) {
   bool result = false;
@@ -198,25 +226,39 @@ bool verifyBoardsList(const uint8_t * mac_addr) {
         return result;
       }
     }
-
-    
   }
 
   return result;
 }
 
-void readDataToSend() {
+void readHubDataToSend() {
   outgoingSetpoints.msgType = DATA;
   outgoingSetpoints.id = 1;
   outgoingSetpoints.temp = random(0, 40);
   outgoingSetpoints.hum = random(0, 100);
   outgoingSetpoints.readingId = counter++;
 
+  char macStr[18];
+  strcpy(macStr, WiFi.macAddress().c_str());
+
+  toLowerCase(macStr);
+  removeChar(macStr, ':');
+
+  // Use sscanf to parse the MAC address string
+  // if (sscanf(WiFi.macAddress().c_str(), "%2hhx%2hhx%2hhx%2hhx%2hhx%2hhx",
+  //             &macStr[0], &macStr[1], &macStr[2],
+  //             &hubMacAddress[3], &hubMacAddress[4], &hubMacAddress[5]) != 6) {
+  //     fprintf(stderr, "Invalid MAC address format\n");
+  //     // return;
+  // }
+  // snprintf(macStr, sizeof(macStr), "%02x%02x%02x%02x%02x%02x",
+  //           mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+
   StaticJsonDocument<1000> root;
   String payload;
   
   // create a JSON document with received data and send it by event to the web page
-  root["id"] = outgoingSetpoints.id;
+  root["id"] = macStr;// outgoingSetpoints.id;
   root["temperature"] = outgoingSetpoints.temp;
   root["humidity"] = outgoingSetpoints.hum;
   root["readingId"] = String(outgoingSetpoints.readingId);
@@ -293,6 +335,53 @@ bool addPeer(const uint8_t *peer_addr) {      // add pairing
   }
 } 
 
+void updateBoardsList()  {
+  const size_t capacity = JSON_ARRAY_SIZE(6) + JSON_ARRAY_SIZE(1) + 18;
+  StaticJsonDocument<capacity> board_data;
+
+  JsonArray outerArray = board_data.to<JsonArray>();
+
+  for(int i=0; i < numBoards; i++) {
+    char macBoardStr[18];
+    snprintf(macBoardStr, sizeof(macBoardStr), "%02x%02x%02x%02x%02x%02x",
+            array_boards[i].macAddr[0], array_boards[i].macAddr[1], array_boards[i].macAddr[2], array_boards[i].macAddr[3], array_boards[i].macAddr[4], array_boards[i].macAddr[5]);
+    Serial.print("verifyBoardsList - macBoardStr=");         
+    Serial.println(macBoardStr);
+    
+    if (strcmp(macBoardStr, "000000000000") != 0) {
+      // if mac addres is not existing,, add this mac address into board array.
+      // for (int j = 0; j < 6; j++) {
+      //   array_boards[i].macAddr[j] = mac_addr[j];
+      // }
+      
+      // Create a nested JSON object using createNestedObject()
+      JsonObject innerObject = outerArray.createNestedObject();
+      innerObject["macAddr"] = macBoardStr;
+    }
+    
+  }
+
+  String boardlist_payload;
+  serializeJson(board_data, boardlist_payload);
+  events.send(boardlist_payload.c_str(), "draw_boards", millis());
+  Serial.println();
+}
+
+void removeChar(char* str, char charToRemove) {
+    size_t length = strlen(str);
+    size_t shiftAmount = 0;
+
+    for (size_t i = 0; i < length; ++i) {
+        if (str[i] == charToRemove) {
+            shiftAmount++;
+        } else {
+            str[i - shiftAmount] = str[i];
+        }
+    }
+
+    str[length - shiftAmount] = '\0'; // Null-terminate the new end of the string
+}
+
 void updateBoardsInfoPage()  {
   const size_t capacity = JSON_ARRAY_SIZE(6) + JSON_ARRAY_SIZE(4) + 60;
   StaticJsonDocument<capacity> board_data;
@@ -352,9 +441,13 @@ void OnDataRecv(const uint8_t * mac_addr, const uint8_t *incomingData, int len) 
     // Update board mac address lists
     verifyBoardsList(mac_addr);
 
+    char macStr[18];
+    snprintf(macStr, sizeof(macStr), "%02x%02x%02x%02x%02x%02x",
+            mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+
     memcpy(&incomingReadings, incomingData, sizeof(incomingReadings));
     // create a JSON document with received data and send it by event to the web page
-    root["id"] = incomingReadings.id;
+    root["id"] = macStr; // incomingReadings.id;
     root["temperature"] = incomingReadings.temp;
     root["humidity"] = incomingReadings.hum;
     root["readingId"] = String(incomingReadings.readingId);
@@ -371,7 +464,8 @@ void OnDataRecv(const uint8_t * mac_addr, const uint8_t *incomingData, int len) 
     // serializeJson(board, boardlist_payload);
     // events.send(boardlist_payload.c_str(), "draw_boards", millis());
     // Serial.println();
-    updateBoardsInfoPage();
+
+    // updateBoardsInfoPage();
 
     printIncomingReadings();
     break;
@@ -394,6 +488,9 @@ void OnDataRecv(const uint8_t * mac_addr, const uint8_t *incomingData, int len) 
         Serial.println("send response");
         esp_err_t result = esp_now_send(mac_addr, (uint8_t *) &pairingData, sizeof(pairingData));
         addPeer(mac_addr);
+        
+        // draw boards list in html page
+        updateBoardsList();
       }  
     }  
     break; 
@@ -500,7 +597,7 @@ void loop() {
 
     events.send("ping",NULL,millis());
     lastEventTime = millis();
-    readDataToSend();
+    readHubDataToSend();
     printOutgoingSendings();
     esp_now_send(NULL, (uint8_t *) &outgoingSetpoints, sizeof(outgoingSetpoints));
   }
