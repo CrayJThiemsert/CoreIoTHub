@@ -12,6 +12,8 @@
 #include "AsyncTCP.h"
 #include <ArduinoJson.h>
 
+#define MAX_BOARDS 6
+
 // Replace with your network credentials (STATION)
 const char* ssid = "Killing Me Softly 2G";
 const char* password = "14mP455w0rd";
@@ -44,6 +46,13 @@ typedef struct struct_pairing {       // new structure for pairing
 struct_message incomingReadings;
 struct_message outgoingSetpoints;
 struct_pairing pairingData;
+
+// Declare array of board struct
+typedef struct struct_board {       // new structure for board mac addresses
+    uint8_t macAddr[6];
+};
+const int numBoards = MAX_BOARDS;
+struct_board array_boards[numBoards];
 
 AsyncWebServer server(80);
 AsyncEventSource events("/events");
@@ -81,6 +90,7 @@ const char index_html[] PROGMEM = R"rawliteral(
       <div class="card humidity">
         <h4><i class="fas fa-tint"></i> BOARD #1 - HUMIDITY</h4><p><span class="reading"><span id="h1"></span> &percnt;</span></p><p class="packet">Reading ID: <span id="rh1"></span></p>
       </div>
+
       <div class="card temperature">
         <h4><i class="fas fa-thermometer-half"></i> BOARD #2 - TEMPERATURE</h4><p><span class="reading"><span id="t2"></span> &deg;C</span></p><p class="packet">Reading ID: <span id="rt2"></span></p>
       </div>
@@ -88,6 +98,12 @@ const char index_html[] PROGMEM = R"rawliteral(
         <h4><i class="fas fa-tint"></i> BOARD #2 - HUMIDITY</h4><p><span class="reading"><span id="h2"></span> &percnt;</span></p><p class="packet">Reading ID: <span id="rh2"></span></p>
       </div>
     </div>
+  </div>
+  <div id="container_debug" class="content">
+    Hello debug
+  </div>
+  <div id="container_board" class="content">
+    Hello div
   </div>
 <script>
 if (!!window.EventSource) {
@@ -108,16 +124,86 @@ if (!!window.EventSource) {
  
  source.addEventListener('new_readings', function(e) {
   console.log("new_readings", e.data);
+  const container = document.getElementById('container_debug');
+
   var obj = JSON.parse(e.data);
+
+  container.innerHTML = JSON.stringify(obj, null, 2);
+
   document.getElementById("t"+obj.id).innerHTML = obj.temperature.toFixed(2);
   document.getElementById("h"+obj.id).innerHTML = obj.humidity.toFixed(2);
   document.getElementById("rt"+obj.id).innerHTML = obj.readingId;
   document.getElementById("rh"+obj.id).innerHTML = obj.readingId;
  }, false);
+
+ source.addEventListener('draw_boards', function(e) {
+  console.log("draw_boards", e.data);
+  const container = document.getElementById('container_board');
+  container.innerHTML = ''; // Clear existing content
+
+  var obj = JSON.parse(e.data);
+
+  container.innerHTML = JSON.stringify(obj, null, 2);
+
+  obj.forEach((item, index) => {
+      const divId = `div${index + 1}`;
+      const div = document.createElement('div');
+      div.id = divId;
+      div.className = 'data-div'; // Add any desired CSS class
+
+      div.innerHTML = `
+          <h2>${item.readingId}</h2>
+          <p>${item.temperature}</p>
+          <!-- Add more content as needed -->
+      `;
+
+      container.appendChild(div);
+  });
+ }, false);
 }
 </script>
 </body>
 </html>)rawliteral";
+
+bool verifyBoardsList(const uint8_t * mac_addr) {
+  bool result = false;
+
+  char macStr[18];
+  snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
+           mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+  Serial.println();
+  Serial.print("verifyBoardsList - macStr=");         
+  Serial.println(macStr);
+
+  int newMacAddrIndex = 0;
+
+  for(int i=0; i < numBoards; i++) {
+    char macBoardStr[18];
+    snprintf(macBoardStr, sizeof(macBoardStr), "%02x:%02x:%02x:%02x:%02x:%02x",
+            array_boards[i].macAddr[0], array_boards[i].macAddr[1], array_boards[i].macAddr[2], array_boards[i].macAddr[3], array_boards[i].macAddr[4], array_boards[i].macAddr[5]);
+    Serial.print("verifyBoardsList - macBoardStr=");         
+    Serial.println(macBoardStr);
+
+    if (strcmp(macBoardStr, macStr) == 0) {
+      result = true;
+      return result;
+    } else {
+      if (strcmp(macBoardStr, "00:00:00:00:00:00") == 0) {
+        // if mac addres is not existing,, add this mac address into board array.
+        for (int j = 0; j < 6; j++) {
+          array_boards[i].macAddr[j] = mac_addr[j];
+        }
+        
+        result = true;
+        return result;
+      }
+    }
+
+    
+  }
+
+  return result;
+}
 
 void readDataToSend() {
   outgoingSetpoints.msgType = DATA;
@@ -207,6 +293,42 @@ bool addPeer(const uint8_t *peer_addr) {      // add pairing
   }
 } 
 
+void updateBoardsInfoPage()  {
+  const size_t capacity = JSON_ARRAY_SIZE(6) + JSON_ARRAY_SIZE(4) + 60;
+  StaticJsonDocument<capacity> board_data;
+
+  // Sample data format: [ { "readingId": 1, "temperature": 25 }, { "readingId": 2, "temperature": 30 } ]
+  JsonArray outerArray = board_data.to<JsonArray>();
+  // Create a nested JSON object using createNestedObject()
+  JsonObject innerObject1 = outerArray.createNestedObject();
+  innerObject1["id"] = incomingReadings.id;
+  innerObject1["readingId"] = String(incomingReadings.readingId);
+  innerObject1["humidity"] = incomingReadings.hum;
+  innerObject1["temperature"] = incomingReadings.temp;
+
+  // JsonObject innerObject2 = outerArray.createNestedObject();
+  // innerObject2["readingId"] = 2;
+  // innerObject2["temperature"] = 30;
+
+  // JsonArray outerArray = board_data.to<JsonArray>();
+
+  // // Array 1
+  // JsonArray innerArray1 = outerArray.createNestedArray();
+  // innerArray1.add("Apple");
+  // innerArray1.add("Banana");
+  // innerArray1.add("Cherry");
+
+  // // Array 2
+  // JsonArray innerArray2 = outerArray.createNestedArray();
+  // innerArray2.add("Lemon");
+  // innerArray2.add("Mango");
+
+  String boardlist_payload;
+  serializeJson(board_data, boardlist_payload);
+  events.send(boardlist_payload.c_str(), "draw_boards", millis());
+  Serial.println();
+}
+
 // callback when data is sent
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
   Serial.print("Last Packet Send Status: ");
@@ -220,11 +342,16 @@ void OnDataRecv(const uint8_t * mac_addr, const uint8_t *incomingData, int len) 
   Serial.print(" bytes of data received from : ");
   printMAC(mac_addr);
   Serial.println();
+
   StaticJsonDocument<1000> root;
   String payload;
+
   uint8_t type = incomingData[0];       // first message byte is the type of message 
   switch (type) {
   case DATA :                           // the message is data type
+    // Update board mac address lists
+    verifyBoardsList(mac_addr);
+
     memcpy(&incomingReadings, incomingData, sizeof(incomingReadings));
     // create a JSON document with received data and send it by event to the web page
     root["id"] = incomingReadings.id;
@@ -236,6 +363,15 @@ void OnDataRecv(const uint8_t * mac_addr, const uint8_t *incomingData, int len) 
     serializeJson(root, Serial);
     events.send(payload.c_str(), "new_readings", millis());
     Serial.println();
+
+    // new dynamic each boards data
+    // board_data["title"] = incomingReadings.id;
+    // board_data["description"] = incomingReadings.temp;
+    // board = board_data;
+    // serializeJson(board, boardlist_payload);
+    // events.send(boardlist_payload.c_str(), "draw_boards", millis());
+    // Serial.println();
+    updateBoardsInfoPage();
 
     printIncomingReadings();
     break;
@@ -251,6 +387,7 @@ void OnDataRecv(const uint8_t * mac_addr, const uint8_t *incomingData, int len) 
     if (pairingData.id > 0) {     // do not replay to server itself
       if (pairingData.msgType == PAIRING) { 
         pairingData.id = 0;       // 0 is server
+
         // Server is in AP_STA mode: peers need to send data to server soft AP MAC address 
         WiFi.softAPmacAddress(pairingData.macAddr);   
         pairingData.channel = chan;
@@ -284,6 +421,30 @@ void setup() {
   Serial.println();
   Serial.print("Server MAC Address:  ");
   Serial.println(WiFi.macAddress());
+
+  uint8_t macAddress[6];
+  // Use sscanf to parse the MAC address string
+  if (sscanf(WiFi.macAddress().c_str(), "%2hhx:%2hhx:%2hhx:%2hhx:%2hhx:%2hhx",
+              &macAddress[0], &macAddress[1], &macAddress[2],
+              &macAddress[3], &macAddress[4], &macAddress[5]) != 6) {
+      fprintf(stderr, "Invalid MAC address format\n");
+      // return;
+  }
+
+  // Print the converted MAC address
+  printf("MAC Address: ");
+  for (int i = 0; i < 6; i++) {
+      printf("%02X", macAddress[i]);
+      if (i < 5) {
+          printf(":");
+      }
+  }
+  printf("\n");
+
+  // add hub board mac address into board array list
+  verifyBoardsList(macAddress);
+
+  Serial.println();
 
   // Set the device as a Station and Soft Access Point simultaneously
   WiFi.mode(WIFI_AP_STA);
@@ -332,6 +493,11 @@ void loop() {
   static const unsigned long EVENT_INTERVAL_MS = 10000;
   if ((millis() - lastEventTime) > EVENT_INTERVAL_MS) {
     Serial.println();
+
+    int arraySize = sizeof(array_boards) / sizeof(struct_board);
+    Serial.print("Number of elements in array_boards array: ");
+    Serial.println(arraySize);
+
     events.send("ping",NULL,millis());
     lastEventTime = millis();
     readDataToSend();
