@@ -101,14 +101,17 @@ const char index_html[] PROGMEM = R"rawliteral(
     </div>
   </div>
   -->
+  
+  
+  <div id="container_board" class="content">
+    Hello IoT!! - Please restart client. 
+  </div>
+
   <!--
   <div id="container_debug" class="content">
     Hello debug
   </div>
   -->
-  <div id="container_board" class="content">
-    Hello IoT!! - Please restart client. 
-  </div>
 <script>
 if (!!window.EventSource) {
  var source = new EventSource('/events');
@@ -142,12 +145,13 @@ if (!!window.EventSource) {
 
  source.addEventListener('draw_boards', function(e) {
   console.log("draw_boards", e.data);
-  const container = document.getElementById('container_board');
-  container.innerHTML = ''; // Clear existing content
-
   var obj = JSON.parse(e.data);
 
-  // container.innerHTML = JSON.stringify(obj, null, 2);
+  // const debug_container = document.getElementById('container_debug');
+  // debug_container.innerHTML = JSON.stringify(obj, null, 2);
+
+  const container = document.getElementById('container_board');
+  container.innerHTML = ''; // Clear existing content
 
   obj.forEach((item, index) => {
     if(item.macAddr != null && item.macAddr != '000000000000') {
@@ -336,33 +340,39 @@ bool addPeer(const uint8_t *peer_addr) {      // add pairing
 } 
 
 void updateBoardsList()  {
-  const size_t capacity = JSON_ARRAY_SIZE(6) + JSON_ARRAY_SIZE(1) + 18;
+  Serial.println();
+  Serial.println("In updateBoardsList()...");
+
+  const size_t capacity = JSON_ARRAY_SIZE(6) + JSON_ARRAY_SIZE(6) + 18;
   StaticJsonDocument<capacity> board_data;
 
   JsonArray outerArray = board_data.to<JsonArray>();
 
   for(int i=0; i < numBoards; i++) {
+    Serial.print("updateBoardsList - i=");         
+    Serial.println(i);
     char macBoardStr[18];
     snprintf(macBoardStr, sizeof(macBoardStr), "%02x%02x%02x%02x%02x%02x",
             array_boards[i].macAddr[0], array_boards[i].macAddr[1], array_boards[i].macAddr[2], array_boards[i].macAddr[3], array_boards[i].macAddr[4], array_boards[i].macAddr[5]);
-    Serial.print("verifyBoardsList - macBoardStr=");         
+    Serial.print("updateBoardsList - macBoardStr=");         
     Serial.println(macBoardStr);
     
     if (strcmp(macBoardStr, "000000000000") != 0) {
-      // if mac addres is not existing,, add this mac address into board array.
-      // for (int j = 0; j < 6; j++) {
-      //   array_boards[i].macAddr[j] = mac_addr[j];
-      // }
-      
       // Create a nested JSON object using createNestedObject()
       JsonObject innerObject = outerArray.createNestedObject();
       innerObject["macAddr"] = macBoardStr;
+
+      Serial.print("updateBoardsList - created=");         
+      Serial.println(macBoardStr);
     }
-    
   }
 
   String boardlist_payload;
   serializeJson(board_data, boardlist_payload);
+
+  Serial.print("updateBoardsList - boardlist_payload=");         
+  Serial.println(boardlist_payload);
+
   events.send(boardlist_payload.c_str(), "draw_boards", millis());
   Serial.println();
 }
@@ -380,42 +390,6 @@ void removeChar(char* str, char charToRemove) {
     }
 
     str[length - shiftAmount] = '\0'; // Null-terminate the new end of the string
-}
-
-void updateBoardsInfoPage()  {
-  const size_t capacity = JSON_ARRAY_SIZE(6) + JSON_ARRAY_SIZE(4) + 60;
-  StaticJsonDocument<capacity> board_data;
-
-  // Sample data format: [ { "readingId": 1, "temperature": 25 }, { "readingId": 2, "temperature": 30 } ]
-  JsonArray outerArray = board_data.to<JsonArray>();
-  // Create a nested JSON object using createNestedObject()
-  JsonObject innerObject1 = outerArray.createNestedObject();
-  innerObject1["id"] = incomingReadings.id;
-  innerObject1["readingId"] = String(incomingReadings.readingId);
-  innerObject1["humidity"] = incomingReadings.hum;
-  innerObject1["temperature"] = incomingReadings.temp;
-
-  // JsonObject innerObject2 = outerArray.createNestedObject();
-  // innerObject2["readingId"] = 2;
-  // innerObject2["temperature"] = 30;
-
-  // JsonArray outerArray = board_data.to<JsonArray>();
-
-  // // Array 1
-  // JsonArray innerArray1 = outerArray.createNestedArray();
-  // innerArray1.add("Apple");
-  // innerArray1.add("Banana");
-  // innerArray1.add("Cherry");
-
-  // // Array 2
-  // JsonArray innerArray2 = outerArray.createNestedArray();
-  // innerArray2.add("Lemon");
-  // innerArray2.add("Mango");
-
-  String boardlist_payload;
-  serializeJson(board_data, boardlist_payload);
-  events.send(boardlist_payload.c_str(), "draw_boards", millis());
-  Serial.println();
 }
 
 // callback when data is sent
@@ -457,16 +431,6 @@ void OnDataRecv(const uint8_t * mac_addr, const uint8_t *incomingData, int len) 
     events.send(payload.c_str(), "new_readings", millis());
     Serial.println();
 
-    // new dynamic each boards data
-    // board_data["title"] = incomingReadings.id;
-    // board_data["description"] = incomingReadings.temp;
-    // board = board_data;
-    // serializeJson(board, boardlist_payload);
-    // events.send(boardlist_payload.c_str(), "draw_boards", millis());
-    // Serial.println();
-
-    // updateBoardsInfoPage();
-
     printIncomingReadings();
     break;
   
@@ -490,6 +454,8 @@ void OnDataRecv(const uint8_t * mac_addr, const uint8_t *incomingData, int len) 
         addPeer(mac_addr);
         
         // draw boards list in html page
+        Serial.println("Refresh board lists...");
+        // Refresh board lists
         updateBoardsList();
       }  
     }  
@@ -590,6 +556,7 @@ void loop() {
   static const unsigned long EVENT_INTERVAL_MS = 10000;
   if ((millis() - lastEventTime) > EVENT_INTERVAL_MS) {
     Serial.println();
+    
 
     int arraySize = sizeof(array_boards) / sizeof(struct_board);
     Serial.print("Number of elements in array_boards array: ");
@@ -599,6 +566,9 @@ void loop() {
     lastEventTime = millis();
     readHubDataToSend();
     printOutgoingSendings();
+
+    
+
     esp_now_send(NULL, (uint8_t *) &outgoingSetpoints, sizeof(outgoingSetpoints));
   }
 }
