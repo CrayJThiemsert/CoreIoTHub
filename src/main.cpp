@@ -104,7 +104,7 @@ const char index_html[] PROGMEM = R"rawliteral(
   
   
   <div id="container_board" class="content">
-    Hello IoT!! - Please restart client. 
+    <!-- Hello IoT!! - Please restart client. -->
   </div>
 
   <!--
@@ -151,7 +151,7 @@ if (!!window.EventSource) {
   // debug_container.innerHTML = JSON.stringify(obj, null, 2);
 
   const container = document.getElementById('container_board');
-  container.innerHTML = ''; // Clear existing content
+  //container.innerHTML = ''; // Clear existing content
 
   obj.forEach((item, index) => {
     if(item.macAddr != null && item.macAddr != '000000000000') {
@@ -160,23 +160,27 @@ if (!!window.EventSource) {
       const hId = `${'h'+item.macAddr}`;
       const rhId = `${'rh'+item.macAddr}`;
 
-      const div_cards = document.createElement('div');
-      //divt_cards.id = tId;
-      div_cards.className = 'cards'; // Add any desired CSS class
+      const element = document.getElementById(tId);
+      // draw element if it is not existing.
+      if (!element) {
+        const div_cards = document.createElement('div');
+        //divt_cards.id = tId;
+        div_cards.className = 'cards'; // Add any desired CSS class
 
-      div_cards.innerHTML = `
-          <!--<h2>${tId}</h2>-->
-          
-          <div class="card temperature">
-            <h4><i class="fas fa-thermometer-half"></i> BOARD #${item.macAddr} - TEMPERATURE</h4><p><span class="reading"><span id="${tId}"></span> &deg;C</span></p><p class="packet">Reading ID: <span id="${rtId}"></span></p>
-          </div>
-          <div class="card humidity">
-            <h4><i class="fas fa-tint"></i> BOARD #${item.macAddr} - HUMIDITY</h4><p><span class="reading"><span id="${hId}"></span> &percnt;</span></p><p class="packet">Reading ID: <span id="${rhId}"></span></p>
-          </div>
+        div_cards.innerHTML = `
+            <!--<h2>${tId}</h2>-->
+            
+            <div class="card temperature">
+              <h4><i class="fas fa-thermometer-half"></i> BOARD #${item.macAddr} - TEMPERATURE</h4><p><span class="reading"><span id="${tId}"></span> &deg;C</span></p><p class="packet">Reading ID: <span id="${rtId}"></span></p>
+            </div>
+            <div class="card humidity">
+              <h4><i class="fas fa-tint"></i> BOARD #${item.macAddr} - HUMIDITY</h4><p><span class="reading"><span id="${hId}"></span> &percnt;</span></p><p class="packet">Reading ID: <span id="${rhId}"></span></p>
+            </div>
 
-      `;
+        `;
 
-      container.appendChild(div_cards);
+        container.appendChild(div_cards);
+      }
     }
       
   });
@@ -556,18 +560,17 @@ void loop() {
   static const unsigned long EVENT_INTERVAL_MS = 10000;
   if ((millis() - lastEventTime) > EVENT_INTERVAL_MS) {
     Serial.println();
-    
 
     int arraySize = sizeof(array_boards) / sizeof(struct_board);
     Serial.print("Number of elements in array_boards array: ");
     Serial.println(arraySize);
 
+    updateBoardsList();
+
     events.send("ping",NULL,millis());
     lastEventTime = millis();
     readHubDataToSend();
     printOutgoingSendings();
-
-    
 
     esp_now_send(NULL, (uint8_t *) &outgoingSetpoints, sizeof(outgoingSetpoints));
   }
